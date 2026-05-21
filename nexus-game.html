@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Nexus — Alphabet Reels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06080a;
+    --panel: #11161c;
+    --panel-2: #161d26;
+    --border: #1f2933;
+    --text: #e6edf3;
+    --muted: #6b7785;
+    --accent: #4ade80;
+    --accent-dim: #14532d;
+    --warn: #fb923c;
+    --cool: #60a5fa;
+    --prev: #ef4444;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', monospace; overscroll-behavior: none;
+  }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(74,222,128,0.05), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(96,165,250,0.04), transparent 40%),
+      var(--bg);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 14px 60px;
+    user-select: none;
+  }
+  header {
+    width: 100%; max-width: 560px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  h1 { font-size: 40px; font-weight: 800; letter-spacing: 6px; margin: 0; }
+
+  .header-btns { display: flex; gap: 8px; }
+  .header-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 11px; font-family: inherit; font-size: 11px;
+    cursor: pointer; transition: all .2s; letter-spacing: 1px;
+  }
+  .header-btn:hover { color: var(--text); border-color: var(--muted); }
+  .header-btn.on { color: var(--accent); border-color: rgba(74,222,128,0.4); }
+
+  .stats {
+    width: 100%; max-width: 560px;
+    text-align: center; color: var(--muted);
+    font-size: 11px; letter-spacing: 3px; margin: 16px 0 18px;
+  }
+  .stats span { color: var(--text); margin: 0 4px; }
+
+  .board {
+    width: 100%; max-width: 520px;
+    /* Symmetric gutters keep the reels centered while columns still line up
+       with the hint/history grids below (which use the left gutter for row numbers). */
+    display: grid; grid-template-columns: 24px repeat(5, 1fr) 24px;
+    gap: 8px; margin-bottom: 10px;
+  }
+  .board .board-gutter { /* empty placeholder cell to balance the row-number column */ }
+  .reel-col { display: flex; flex-direction: column; gap: 6px; }
+
+  .arrow-btn {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); padding: 6px 0; cursor: pointer; font-size: 12px;
+    transition: all .15s; font-family: inherit;
+  }
+  .arrow-btn:hover { color: var(--text); background: var(--panel-2); }
+  .arrow-btn:active { transform: scale(0.94); }
+
+  .reel-window {
+    position: relative;
+    height: 168px;
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .reel-window.grabbing { cursor: grabbing; }
+  .reel-window::before, .reel-window::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 56px; pointer-events: none; z-index: 2;
+  }
+  .reel-window::before { top: 0; background: linear-gradient(180deg, var(--panel) 30%, transparent); }
+  .reel-window::after  { bottom: 0; background: linear-gradient(0deg, var(--panel-2) 30%, transparent); }
+
+  .reel-track {
+    position: absolute; left: 0; right: 0; top: 56px;
+    will-change: transform;
+  }
+  .reel-cell {
+    height: 56px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 700; color: var(--muted);
+    letter-spacing: 1px;
+    transition: color .2s, text-shadow .2s;
+  }
+  .reel-cell.center { color: var(--text); font-size: 30px; }
+  .reel-cell.prev {
+    color: var(--prev);
+    text-shadow: 0 0 10px rgba(239,68,68,0.45);
+  }
+  .reel-cell.prev.center { color: var(--prev); }
+  .reel-cell.eliminated {
+    color: #2a313a;
+    text-shadow: none;
+  }
+  .reel-cell.eliminated.center { color: #3a424c; }
+
+  .center-frame {
+    position: absolute; top: 56px; left: 6px; right: 6px; height: 56px;
+    border: 1.5px solid var(--accent-dim); border-radius: 8px;
+    box-shadow: 0 0 14px rgba(74,222,128,0.08) inset;
+    pointer-events: none; z-index: 3;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .reel-window.locked .center-frame {
+    border-color: rgba(74,222,128,0.6);
+    box-shadow: 0 0 22px rgba(74,222,128,0.2) inset;
+  }
+  .reel-window.locked .reel-cell.center {
+    color: var(--accent);
+    text-shadow: 0 0 12px rgba(74,222,128,0.4);
+  }
+
+  /* Active state when waiting for keyboard input */
+  .reel-window.active .center-frame {
+    border-color: rgba(96,165,250,0.85);
+    box-shadow: 0 0 24px rgba(96,165,250,0.25) inset, 0 0 16px rgba(96,165,250,0.2);
+    animation: pulse-frame 1.1s ease-in-out infinite;
+  }
+  .reel-window.active .reel-cell.center {
+    color: var(--cool);
+    text-shadow: 0 0 14px rgba(96,165,250,0.55);
+  }
+  .reel-window.jostle { animation: jostle 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
+  /* Sequential reveal flash — different intensities by hint type */
+  .reel-window.reveal-correct { animation: reveal-correct 0.55s ease-out; }
+  .reel-window.reveal-close   { animation: reveal-close   0.45s ease-out; }
+  .reel-window.reveal-far     { animation: reveal-far     0.45s ease-out; }
+
+  @keyframes reveal-correct {
+    0%   { box-shadow: 0 0 0 rgba(74,222,128,0);   transform: scale(1); }
+    25%  { box-shadow: 0 0 28px rgba(74,222,128,0.7), 0 0 40px rgba(74,222,128,0.4); transform: scale(1.06); }
+    100% { box-shadow: 0 0 0 rgba(74,222,128,0);   transform: scale(1); }
+  }
+  @keyframes reveal-close {
+    0%   { box-shadow: 0 0 0 rgba(96,165,250,0);   transform: scale(1); }
+    30%  { box-shadow: 0 0 22px rgba(96,165,250,0.55); transform: scale(1.03); }
+    100% { box-shadow: 0 0 0 rgba(96,165,250,0);   transform: scale(1); }
+  }
+  @keyframes reveal-far {
+    0%   { box-shadow: 0 0 0 rgba(251,146,60,0);   transform: scale(1); }
+    30%  { box-shadow: 0 0 18px rgba(251,146,60,0.5);  transform: scale(1.02); }
+    100% { box-shadow: 0 0 0 rgba(251,146,60,0);   transform: scale(1); }
+  }
+
+  @keyframes jostle {
+    0%, 100%  { transform: translateX(0); }
+    15%       { transform: translateX(-3px) rotate(-0.6deg); }
+    30%       { transform: translateX(3px)  rotate(0.6deg); }
+    45%       { transform: translateX(-2px) rotate(-0.4deg); }
+    60%       { transform: translateX(2px)  rotate(0.4deg); }
+    80%       { transform: translateX(-1px); }
+  }
+  @keyframes pulse-frame {
+    0%, 100% { box-shadow: 0 0 22px rgba(96,165,250,0.18) inset, 0 0 12px rgba(96,165,250,0.15); }
+    50%      { box-shadow: 0 0 30px rgba(96,165,250,0.35) inset, 0 0 22px rgba(96,165,250,0.3); }
+  }
+
+  /* Hidden input for keyboard entry */
+  .hidden-input {
+    position: absolute; opacity: 0; pointer-events: none;
+    width: 1px; height: 1px; top: 50%; left: 50%;
+  }
+
+  .hint-row {
+    width: 100%; max-width: 520px;
+    /* Match board + history grid: left gutter for row numbers, right gutter for symmetry */
+    display: grid; grid-template-columns: 24px repeat(5, 1fr) 24px; gap: 8px;
+    align-items: center;
+    margin-bottom: 10px; min-height: 50px;
+  }
+  .hint-row .num { font-size: 11px; color: var(--muted); text-align: center; opacity: 0; }
+  .hint {
+    height: 48px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--muted);
+    transition: opacity .2s;
+  }
+  .hint.empty { background: transparent; border-color: transparent; }
+  .hint .letter {
+    font-size: 18px; font-weight: 700; line-height: 1;
+  }
+  .hint .arrow {
+    font-size: 11px; line-height: 0.8; margin-top: 3px; font-weight: 700;
+    white-space: pre; text-align: center;
+  }
+  .hint.close-up .arrow, .hint.close-down .arrow { color: var(--cool); }
+  .hint.far-up   .arrow, .hint.far-down   .arrow { color: var(--warn); }
+  .hint.correct  { border-color: var(--accent); background: rgba(74,222,128,0.08); }
+  .hint.correct .letter { color: var(--accent); }
+  .hint.correct .arrow  { color: var(--accent); }
+
+  .actions {
+    width: 100%; max-width: 520px;
+    display: flex; gap: 10px; margin-top: 4px;
+  }
+  .btn {
+    flex: 1; padding: 13px 16px; border-radius: 10px; font-family: inherit;
+    font-size: 12px; letter-spacing: 4px; font-weight: 700;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); cursor: pointer; transition: all .15s;
+  }
+  .btn.primary {
+    background: linear-gradient(180deg, rgba(74,222,128,0.2), rgba(74,222,128,0.06));
+    border-color: rgba(74,222,128,0.5); color: var(--accent);
+  }
+  .btn.primary:hover { background: linear-gradient(180deg, rgba(74,222,128,0.3), rgba(74,222,128,0.1)); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .status {
+    width: 100%; max-width: 520px;
+    margin-top: 22px; text-align: center;
+    min-height: 24px;
+  }
+  .status .label { color: var(--muted); font-size: 11px; letter-spacing: 4px; }
+  .status .word { font-size: 36px; font-weight: 800; letter-spacing: 8px; margin-top: 8px; }
+  .status.win .word  { color: var(--accent); text-shadow: 0 0 18px rgba(74,222,128,0.4); }
+  .status.lose .word { color: var(--danger); }
+  .status .tries-msg {
+    margin-top: 10px; color: var(--muted); font-size: 11px; letter-spacing: 3px;
+  }
+  .status .tries-msg b { color: var(--text); }
+
+  .history {
+    width: 100%; max-width: 520px;
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 20px;
+  }
+  .history-row {
+    display: grid; grid-template-columns: 24px repeat(5, 1fr) 24px; gap: 8px;
+    align-items: center;
+  }
+  .history-row .num { font-size: 11px; color: var(--muted); text-align: center; }
+  .history-cell {
+    height: 48px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .history-cell .letter { font-size: 18px; font-weight: 700; line-height: 1; }
+  .history-cell .h {
+    font-size: 11px; line-height: 0.8; margin-top: 3px; font-weight: 700;
+    white-space: pre; text-align: center;
+  }
+  .history-cell.correct { border-color: var(--accent); background: rgba(74,222,128,0.08); }
+  .history-cell.correct .letter { color: var(--accent); }
+  .history-cell .h.close-up, .history-cell .h.close-down { color: var(--cool); }
+  .history-cell .h.far-up,   .history-cell .h.far-down   { color: var(--warn); }
+  .history-cell .h.correct                               { color: var(--accent); }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+    padding: 20px;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px; max-width: 420px; width: 100%;
+  }
+  .modal h2 { margin: 0 0 10px; letter-spacing: 4px; font-size: 16px; }
+  .modal p { color: #c2cad3; font-size: 13px; line-height: 1.55; margin: 8px 0; }
+  .modal .legend { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .modal .legend div { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #c2cad3; }
+  .modal .legend .sym {
+    display: inline-block; min-width: 28px; text-align: center; font-weight: 700;
+  }
+  .modal .legend .sym.stacked { line-height: 0.85; font-size: 13px; }
+  .modal .close { margin-top: 16px; }
+
+  @media (max-width: 420px) {
+    h1 { font-size: 32px; letter-spacing: 4px; }
+    .reel-cell { font-size: 20px; }
+    .reel-cell.center { font-size: 26px; }
+    .status .word { font-size: 28px; letter-spacing: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NEXUS</h1>
+  <div class="header-btns">
+    <button class="header-btn on" id="soundBtn" title="Toggle sound">🔊</button>
+    <button class="header-btn" id="helpBtn">HOW TO PLAY</button>
+  </div>
+</header>
+
+<div class="stats">
+  TRIES LEFT <span id="triesLeft">4</span> &nbsp;|&nbsp; ROUND <span id="roundNum">1</span>
+</div>
+
+<div class="board" id="board"></div>
+<input class="hidden-input" id="hiddenInput" type="text" maxlength="1" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+<div class="hint-row" id="hintRow"></div>
+
+<div class="actions">
+  <button class="btn" id="newBtn">NEW</button>
+  <button class="btn primary" id="enterBtn">ENTER</button>
+</div>
+
+<div class="status" id="status"></div>
+<div class="history" id="history"></div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h2>HOW TO PLAY</h2>
+    <p>A secret 5-letter word is hidden. Drag each reel up or down (or tap the letter to type it), then press <b>ENTER</b>.</p>
+    <p>After each guess, hints appear above each reel — arrows point toward where the target letter sits on the reel:</p>
+    <div class="legend">
+      <div><span class="sym" style="color:var(--accent)">●</span> exact letter</div>
+      <div><span class="sym" style="color:var(--cool)">v</span> within 4 — target is later (below on reel)</div>
+      <div><span class="sym" style="color:var(--cool)">^</span> within 4 — target is earlier (above on reel)</div>
+      <div><span class="sym stacked" style="color:var(--warn)">v<br>v</span> more than 4 later</div>
+      <div><span class="sym stacked" style="color:var(--warn)">^<br>^</span> more than 4 earlier</div>
+    </div>
+    <p style="margin-top:14px">Your previous guess letter stays highlighted on the reel in red so you can see where the arrows point from. You get <b>4 tries</b>.</p>
+    <button class="btn close" id="closeModal">CLOSE</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const CELL = 56;
+  const N = 5;
+  const MAX_TRIES = 4;
+  const TAP_MS = 220;       // tap threshold for keyboard popup
+  const TAP_PX = 8;         // movement threshold for tap
+
+  const WORDS = [
+    'PERCH','APPLE','BRAVE','CRANE','DRIVE','EAGLE','FLAME','GLOBE','HOUND','IVORY',
+    'JOLLY','KNEAD','LEMON','MANGO','NORTH','OCEAN','PIANO','QUIET','RIVER','STONE',
+    'TIGER','UNDER','VIVID','WHALE','YACHT','ZEBRA','BAKER','CIDER','DREAM','EARTH',
+    'FAITH','GRAPE','HONEY','INLET','JUMBO','KARMA','LIGHT','MOUSE','NIGHT','OPERA',
+    'PRIDE','QUEEN','ROBIN','SUGAR','TRUCK','UNITY','VAULT','WORLD','YOUNG','AMBER',
+    'BLOOM','CLOUD','DANCE','ELBOW','FROST','GLINT','HEART','INPUT','JOKER','KAYAK',
+    'LATCH','MARCH','NOBLE','OLIVE','PLANK','QUILT','RAVEN','SHORE','TWINE','VENOM',
+    'WAGER','YIELD','ZESTY','ALERT','BISON','CHESS','DELTA','FIBER','GAUGE','HABIT',
+    'IDEAL','JEANS','KNIFE','LASER','METAL','NURSE','ORBIT','PRISM','RANCH','SIREN',
+    'TRIBE','VOWEL','WHEAT','BLAZE','CHARM','DAISY','FROWN','SMILE','TRAIN','CLEAR'
+  ];
+
+  // ---------- STATE ----------
+  let target = '';
+  let positions = [0,0,0,0,0];
+  let prevPositions = null;   // letters from previous guess (for highlight)
+  // Possible letters per reel: array of 5 Sets of letter indices (0-25).
+  // Constraints accumulate after each guess.
+  let possible = [new Set(), new Set(), new Set(), new Set(), new Set()];
+  // Once a reel has been moved into its possible range, lock it so it can't
+  // re-enter the eliminated (grayed-out) zones.
+  let enteredPossible = [false, false, false, false, false];
+  let tracks = [];
+  let triesUsed = 0;
+  let gameOver = false;
+  let roundNum = parseInt(localStorage.getItem('locus_round') || '1', 10);
+  let soundOn = localStorage.getItem('locus_sound') !== '0';
+  let activeReelForInput = -1;
+
+  // ---------- DOM ----------
+  const board       = document.getElementById('board');
+  const hintRow     = document.getElementById('hintRow');
+  const historyEl   = document.getElementById('history');
+  const statusEl    = document.getElementById('status');
+  const triesLeftEl = document.getElementById('triesLeft');
+  const roundNumEl  = document.getElementById('roundNum');
+  const soundBtn    = document.getElementById('soundBtn');
+  const hiddenInput = document.getElementById('hiddenInput');
+
+  // ---------- AUDIO (Web Audio API, generated clicks) ----------
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function clickSound(kind = 'tick', step = 0) {
+    if (!soundOn) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    if (kind === 'tick') {
+      // Short noisy click — Price Is Right wheel-peg style
+      const buf = ctx.createBuffer(1, 220, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / data.length;
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 6);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.12;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 1200;
+      src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
+      src.start(now);
+    } else if (kind === 'tap') {
+      // Softer wood-tap for selection/keypad open
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 660;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.09);
+    } else if (kind === 'key') {
+      // Mechanical typing click
+      const buf = ctx.createBuffer(1, 350, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / data.length;
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 4);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.18;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 2000; bp.Q.value = 0.7;
+      src.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
+      src.start(now);
+    } else if (kind === 'win') {
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.value = f;
+        const t0 = now + i * 0.09;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + 0.3);
+      });
+    } else if (kind === 'lose') {
+      [330, 277, 220].forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.value = f;
+        const t0 = now + i * 0.12;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.15, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + 0.35);
+      });
+    } else if (kind === 'enter') {
+      // Confident submission thunk: short low-mid swell
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.18);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.28, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.24);
+    } else if (kind === 'hint_correct') {
+      // Bright, pleasant bell — ascends through C major pentatonic across
+      // the reveal sequence so multiple correct letters chime upward together.
+      // Steps: C5, D5, E5, G5, A5, C6, D6.
+      const SCALE = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66];
+      const root = SCALE[Math.min(step, SCALE.length - 1)];
+      // Build a pleasant two-note chime: root + a major third above
+      const freqs = [root, root * 1.25]; // approx major third
+      freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.value = f;
+        const t0 = now + idx * 0.012;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.22, t0 + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + 0.5);
+      });
+      // Soft sine sub for warmth, rising with the root an octave below
+      const sub = ctx.createOscillator();
+      const subG = ctx.createGain();
+      sub.type = 'sine'; sub.frequency.value = root / 2;
+      subG.gain.setValueAtTime(0.0001, now);
+      subG.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+      subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      sub.connect(subG); subG.connect(ctx.destination);
+      sub.start(now); sub.stop(now + 0.4);
+    } else if (kind === 'hint_close') {
+      // Warm-ish single tone — "you're nearby"
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 523.25; // C5
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.22);
+    } else if (kind === 'hint_far') {
+      // Muted, low — "cold" feedback
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 700;
+      osc.type = 'sawtooth'; osc.frequency.value = 165; // E3
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.24);
+    } else if (kind === 'new') {
+      // Quick descending sweep — "reset" feel
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(900, now);
+      osc.frequency.exponentialRampToValueAtTime(380, now + 0.18);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.27);
+      // Subtle noise burst on top for "shuffle" texture
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / data.length;
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 3);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const ng = ctx.createGain();
+      ng.gain.value = 0.08;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 2500; bp.Q.value = 0.6;
+      src.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+      src.start(now);
+    }
+  }
+
+  // ---------- REELS ----------
+  function buildReels() {
+    board.innerHTML = '';
+    tracks = [];
+    // Leading gutter cell so reel columns align with hint/history grids below
+    const gutter = document.createElement('div');
+    gutter.className = 'board-gutter';
+    board.appendChild(gutter);
+    for (let i = 0; i < N; i++) {
+      const col = document.createElement('div');
+      col.className = 'reel-col';
+
+      const upBtn = document.createElement('button');
+      upBtn.className = 'arrow-btn';
+      upBtn.innerHTML = '▲';
+      upBtn.addEventListener('click', () => { step(i, -1); clickSound('tick'); });
+
+      const win = document.createElement('div');
+      win.className = 'reel-window';
+      win.dataset.idx = i;
+
+      const frame = document.createElement('div');
+      frame.className = 'center-frame';
+
+      const track = document.createElement('div');
+      track.className = 'reel-track';
+      for (let k = -1; k <= 26; k++) {
+        const cell = document.createElement('div');
+        cell.className = 'reel-cell';
+        cell.dataset.k = k;
+        // Only show actual letters A-Z; positions past the ends stay blank
+        if (k >= 0 && k <= 25) {
+          cell.textContent = ALPHA[k];
+        } else {
+          cell.textContent = '';
+        }
+        track.appendChild(cell);
+      }
+
+      win.appendChild(frame);
+      win.appendChild(track);
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'arrow-btn';
+      downBtn.innerHTML = '▼';
+      downBtn.addEventListener('click', () => { step(i, 1); clickSound('tick'); });
+
+      col.appendChild(upBtn);
+      col.appendChild(win);
+      col.appendChild(downBtn);
+      board.appendChild(col);
+
+      tracks.push({ track, win, lastTickPos: 0, momentumId: null });
+      attachInteraction(win, i);
+      updateTrack(i);
+    }
+    // Trailing gutter cell to balance the leading row-number column visually
+    const gutterRight = document.createElement('div');
+    gutterRight.className = 'board-gutter';
+    board.appendChild(gutterRight);
+
+    hintRow.innerHTML = '';
+    // Leading gutter cell to align columns with history rows
+    const hintGutter = document.createElement('div');
+    hintGutter.className = 'num';
+    hintRow.appendChild(hintGutter);
+    for (let i = 0; i < N; i++) {
+      const h = document.createElement('div');
+      h.className = 'hint empty';
+      const letter = document.createElement('div');
+      letter.className = 'letter';
+      const arrow = document.createElement('div');
+      arrow.className = 'arrow';
+      h.appendChild(letter);
+      h.appendChild(arrow);
+      hintRow.appendChild(h);
+    }
+    // Trailing gutter cell for symmetric centering
+    const hintGutterRight = document.createElement('div');
+    hintGutterRight.className = 'num';
+    hintRow.appendChild(hintGutterRight);
+  }
+
+  function updateTrack(i, customY = null) {
+    const pos = positions[i];
+    const y = customY !== null ? customY : -(pos + 1) * CELL;
+    tracks[i].track.style.transform = `translateY(${y}px)`;
+    // Determine which letter is in the center based on visual position
+    // Center = window y 56-112, which is track y 0-56 (since track starts at top:56)
+    // The cell with k=pos sits at track-y = (pos+1)*CELL + y_offset
+    // When customY is null, k=pos is exactly at track-y 0.
+    const reelPossible = possible[i];
+    const hasConstraints = reelPossible && reelPossible.size > 0 && reelPossible.size < 26;
+    const prevLetter = prevPositions ? prevPositions[i] : -1;
+    Array.from(tracks[i].track.children).forEach(c => {
+      const k = parseInt(c.dataset.k);
+      const isCenter = (k === pos);
+      c.classList.toggle('center', isCenter);
+      // Mark previous guess letter
+      const isPrev = prevLetter >= 0 && ((k % 26) + 26) % 26 === prevLetter;
+      c.classList.toggle('prev', isPrev);
+      // Mark eliminated letters (only for actual A-Z range)
+      // — but never gray out the previous guess letter, so the player can
+      // always see where they came from on the reel.
+      if (!isPrev && hasConstraints && k >= 0 && k <= 25 && !reelPossible.has(k)) {
+        c.classList.add('eliminated');
+      } else {
+        c.classList.remove('eliminated');
+      }
+    });
+  }
+
+  // Returns [min, max] indices of the currently-possible letter range for reel i,
+  // or null if the lock isn't engaged or there are no constraints.
+  function possibleBounds(i) {
+    if (!enteredPossible[i]) return null;
+    const s = possible[i];
+    if (!s || s.size === 0 || s.size === 26) return null;
+    let mn = 26, mx = -1;
+    for (const v of s) {
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    return [mn, mx];
+  }
+
+  // Letter at index k is allowed on reel i.
+  // If there are no constraints yet (size 26), every letter is allowed.
+  // If the reel hasn't entered the possible range yet (enteredPossible[i] false),
+  // every letter is still allowed — so the player can roll off the previous-guess letter.
+  function isPossible(i, k) {
+    if (k < 0 || k > 25) return false;
+    const s = possible[i];
+    if (!s || s.size === 0 || s.size === 26) return true;
+    if (!enteredPossible[i]) return true;
+    return s.has(k);
+  }
+
+  // Find the next possible letter index from `from` moving by `dir` (+1 or -1).
+  // Returns null if there isn't one in that direction.
+  function nextPossible(i, from, dir) {
+    let k = from + dir;
+    while (k >= 0 && k <= 25) {
+      if (isPossible(i, k)) return k;
+      k += dir;
+    }
+    return null;
+  }
+
+  // Snap a target index to the nearest possible letter (ties prefer downward).
+  function nearestPossible(i, target) {
+    if (isPossible(i, target)) return target;
+    for (let d = 1; d <= 25; d++) {
+      const lo = target - d, hi = target + d;
+      if (isPossible(i, hi)) return hi;
+      if (isPossible(i, lo)) return lo;
+    }
+    return target;
+  }
+
+  // Once a reel is on a possible letter (and has had constraints applied),
+  // engage the lock so it can no longer drift back into eliminated zones.
+  function maybeEngageLock(i) {
+    if (enteredPossible[i]) return;
+    const s = possible[i];
+    if (!s || s.size === 0 || s.size === 26) return;
+    if (s.has(positions[i])) enteredPossible[i] = true;
+  }
+
+  function step(i, dir) {
+    if (gameOver) return;
+    if (tracks[i].win.classList.contains('locked')) return;
+    let next = positions[i] + dir;
+    if (next < 0 || next > 25) return; // clamp at A and Z, no looping
+    // If lock is engaged, skip eliminated letters in this direction
+    if (!isPossible(i, next)) {
+      const skip = nextPossible(i, positions[i], dir);
+      if (skip === null) return;
+      next = skip;
+    }
+    positions[i] = next;
+    maybeEngageLock(i);
+    animateTo(i);
+  }
+
+  function animateTo(i) {
+    const t = tracks[i].track;
+    t.style.transition = 'transform .18s ease-out';
+    updateTrack(i);
+    setTimeout(() => { t.style.transition = ''; }, 200);
+  }
+
+  function setLetter(i, letter) {
+    if (gameOver) return;
+    if (tracks[i].win.classList.contains('locked')) return;
+    let code = letter.toUpperCase().charCodeAt(0) - 65;
+    if (code < 0 || code > 25) return;
+    // If lock is engaged, snap to nearest valid letter.
+    if (!isPossible(i, code)) code = nearestPossible(i, code);
+    positions[i] = code;
+    maybeEngageLock(i);
+    animateTo(i);
+    clickSound('key');
+  }
+
+  // ---------- INTERACTION (drag + tap + momentum) ----------
+  function attachInteraction(win, i) {
+    let startY = 0, startX = 0, startPos = 0, dragging = false;
+    let lastY = 0, lastT = 0; // px/ms
+    let samples = [];          // recent {y, t} for velocity calc
+    let downT = 0;
+    let moved = false;
+    let lastTickPos = 0;
+    let stoppedMomentum = false;  // true if this gesture started while reel was spinning
+
+    const cancelMomentum = () => {
+      if (tracks[i].momentumId) {
+        cancelAnimationFrame(tracks[i].momentumId);
+        tracks[i].momentumId = null;
+      }
+    };
+
+    const onDown = (e) => {
+      if (gameOver) return;
+      if (win.classList.contains('locked')) return;
+      ensureAudio();
+      stoppedMomentum = !!tracks[i].momentumId;
+      cancelMomentum();
+      // If we just killed a running spin, snap to the nearest letter (silently)
+      if (stoppedMomentum) {
+        animateTo(i);
+      }
+      dragging = true;
+      moved = false;
+      win.classList.add('grabbing');
+      const pt = e.touches ? e.touches[0] : e;
+      startY = pt.clientY; startX = pt.clientX;
+      lastY = pt.clientY; lastT = performance.now();
+      downT = lastT;
+      samples = [{ y: pt.clientY, t: lastT }];
+      startPos = positions[i];
+      lastTickPos = startPos;
+      tracks[i].track.style.transition = '';
+      try { win.setPointerCapture && win.setPointerCapture(e.pointerId); } catch(e) {}
+      if (e.cancelable) e.preventDefault();
+    };
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const pt = e.touches ? e.touches[0] : e;
+      const dy = pt.clientY - startY;
+      const dx = pt.clientX - startX;
+      if (Math.abs(dy) > TAP_PX || Math.abs(dx) > TAP_PX) {
+        // First time we've registered as "moved" — this is a drag, not a tap.
+        // Use this as a fallback to clear any stale active highlight that
+        // might have been left behind (e.g. if the keyboard was dismissed
+        // by a host app's back button without firing blur or a viewport resize).
+        if (!moved) {
+          for (let j = 0; j < N; j++) {
+            if (j !== i) tracks[j].win.classList.remove('active');
+          }
+          if (activeReelForInput !== -1 && activeReelForInput !== i) {
+            hiddenInput.blur();
+            hiddenInput.style.pointerEvents = 'none';
+            activeReelForInput = -1;
+            lastActiveBeforeBlur = -1;
+          }
+        }
+        moved = true;
+      }
+
+      // Keep a short history of recent positions for velocity calc
+      const now = performance.now();
+      samples.push({ y: pt.clientY, t: now });
+      // Trim samples older than 100ms
+      const cutoff = now - 100;
+      while (samples.length > 2 && samples[0].t < cutoff) samples.shift();
+      lastY = pt.clientY; lastT = now;
+
+      // dragging up (negative dy) → later letters (advance)
+      const newPosFloat = startPos - dy / CELL;
+      // Default clamp: A to Z
+      let minBound = 0, maxBound = 25;
+      // If lock is engaged for this reel, restrict movement to the possible range.
+      const bounds = possibleBounds(i);
+      if (bounds) {
+        minBound = bounds[0];
+        maxBound = bounds[1];
+      }
+      const newPos = Math.max(minBound, Math.min(maxBound, Math.round(newPosFloat)));
+      // Engage lock as soon as we first land on a possible letter during the drag,
+      // so further drag motion immediately gets clamped to the range.
+      if (!enteredPossible[i]) {
+        const s = possible[i];
+        if (s && s.size > 0 && s.size < 26 && s.has(newPos)) {
+          enteredPossible[i] = true;
+          const b = possibleBounds(i);
+          if (b) { minBound = b[0]; maxBound = b[1]; }
+        }
+      }
+      if (newPos !== lastTickPos) {
+        clickSound('tick');
+        lastTickPos = newPos;
+      }
+      positions[i] = newPos;
+      // Visual position clamped to the same range so the reel can't even visually
+      // drift past the boundary while the finger keeps moving.
+      const clampedFloat = Math.max(minBound, Math.min(maxBound, newPosFloat));
+      const y = -(clampedFloat + 1) * CELL;
+      updateTrack(i, y);
+
+      if (e.cancelable) e.preventDefault();
+    };
+
+    const onUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      win.classList.remove('grabbing');
+      const elapsed = performance.now() - downT;
+
+      // TAP: short + no movement → open keyboard for this reel,
+      // UNLESS this tap was just to stop a spinning reel,
+      // OR this reel is already the active input (then cancel/close).
+      if (!moved && elapsed < TAP_MS) {
+        if (stoppedMomentum) {
+          // Tap landed during a spin — already stopped it on down; do nothing else.
+          stoppedMomentum = false;
+          return;
+        }
+        // Toggle-cancel: tapping the reel that's currently (or just was) active
+        if (activeReelForInput === i || lastActiveBeforeBlur === i) {
+          closeKeyboard();
+          return;
+        }
+        animateTo(i);
+        clickSound('tap');
+        openKeyboardFor(i);
+        return;
+      }
+
+      // If lock should engage and we landed in the possible range, engage it.
+      maybeEngageLock(i);
+      // If locked and currently on an eliminated letter, snap to nearest valid.
+      if (!isPossible(i, positions[i])) {
+        positions[i] = nearestPossible(i, positions[i]);
+      }
+      stoppedMomentum = false;
+
+      // MOMENTUM: compute velocity from recent samples (last ~100ms)
+      // This avoids the velocity dropping to zero if the user pauses briefly before release.
+      let velocity = 0;
+      if (samples.length >= 2) {
+        const first = samples[0];
+        const last = samples[samples.length - 1];
+        const dt = Math.max(1, last.t - first.t);
+        velocity = (last.y - first.y) / dt; // px/ms, positive = moving down
+      }
+      const speed = Math.abs(velocity);
+      if (speed > 0.25) {
+        // dragging down (vel > 0) → earlier letters; up → later
+        const dir = velocity > 0 ? -1 : 1;
+        const extra = Math.min(26, Math.round(speed * 14) + 3);
+        spinMomentum(i, dir, extra);
+      } else {
+        animateTo(i);
+      }
+    };
+
+    win.addEventListener('pointerdown', onDown);
+    win.addEventListener('pointermove', onMove);
+    win.addEventListener('pointerup', onUp);
+    win.addEventListener('pointercancel', onUp);
+
+    win.addEventListener('wheel', (e) => {
+      if (gameOver || win.classList.contains('locked')) return;
+      ensureAudio();
+      e.preventDefault();
+      step(i, e.deltaY > 0 ? 1 : -1);
+      clickSound('tick');
+    }, { passive: false });
+  }
+
+  // Animate `count` clicks forward in `dir` with easing, ticking each step
+  function spinMomentum(i, dir, count) {
+    const startPos = positions[i];
+    // Clamp the requested travel to what's possible without crossing A or Z
+    let maxAvailable = dir > 0 ? (25 - startPos) : startPos;
+    // If lock is engaged, further restrict travel to the possible range bounds.
+    const bounds = possibleBounds(i);
+    if (bounds) {
+      const [mn, mx] = bounds;
+      maxAvailable = dir > 0 ? Math.max(0, mx - startPos) : Math.max(0, startPos - mn);
+    }
+    const actualCount = Math.min(count, maxAvailable);
+    if (actualCount <= 0) { animateTo(i); return; }
+    const endPos = startPos + dir * actualCount;
+    const t = tracks[i].track;
+    t.style.transition = '';
+    const startY = -(startPos + 1) * CELL;
+    // We'll move by exactly actualCount*CELL pixels in dir direction
+    // dir=1 (later letters) → track moves up → y decreases
+    const totalDy = -dir * actualCount * CELL;
+    const duration = Math.min(1600, 350 + actualCount * 70);
+    const start = performance.now();
+    let lastTickedPos = startPos;
+
+    const step = (now) => {
+      const elapsed = now - start;
+      const t01 = Math.min(1, elapsed / duration);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t01, 3);
+      const dy = totalDy * eased;
+      const y = startY + dy;
+      const posFloat = -y / CELL - 1;
+      const curPos = Math.max(0, Math.min(25, Math.round(posFloat)));
+      if (curPos !== lastTickedPos) {
+        clickSound('tick');
+        lastTickedPos = curPos;
+      }
+      positions[i] = curPos;
+      updateTrack(i, y);
+
+      if (t01 < 1) {
+        tracks[i].momentumId = requestAnimationFrame(step);
+      } else {
+        tracks[i].momentumId = null;
+        // Snap final position to a possible letter if the lock is engaged
+        let finalPos = endPos;
+        maybeEngageLock(i);
+        if (!isPossible(i, finalPos)) finalPos = nearestPossible(i, finalPos);
+        positions[i] = finalPos;
+        animateTo(i);
+      }
+    };
+    tracks[i].momentumId = requestAnimationFrame(step);
+  }
+
+  // ---------- KEYBOARD POPUP ----------
+  // When the hidden input blurs (Android back button, dismiss keyboard, etc.),
+  // we want to clear the active highlight. But we also need to detect when the
+  // blur was caused by tapping the same active reel (to support the toggle-cancel).
+  // We do this by remembering which reel was active at the moment the next
+  // pointerdown begins, and consulting it inside onUp.
+  let lastActiveBeforeBlur = -1;
+
+  function clearActiveReels() {
+    for (let j = 0; j < N; j++) tracks[j].win.classList.remove('active');
+  }
+  function closeKeyboard() {
+    hiddenInput.value = '';
+    hiddenInput.blur();
+    hiddenInput.style.pointerEvents = 'none';
+    clearActiveReels();
+    activeReelForInput = -1;
+    lastActiveBeforeBlur = -1;
+  }
+  function openKeyboardFor(i) {
+    activeReelForInput = i;
+    hiddenInput.value = '';
+    // Visual: mark this reel as the active one
+    clearActiveReels();
+    const win = tracks[i].win;
+    win.classList.add('active');
+    // Jostle animation — retrigger by removing then re-adding the class
+    win.classList.remove('jostle');
+    // Force reflow so the animation restarts even on consecutive taps
+    void win.offsetWidth;
+    win.classList.add('jostle');
+    // Position over the reel so mobile keyboards know to open near it
+    const rect = tracks[i].win.getBoundingClientRect();
+    hiddenInput.style.top = (rect.top + window.scrollY + rect.height/2) + 'px';
+    hiddenInput.style.left = (rect.left + rect.width/2) + 'px';
+    hiddenInput.style.pointerEvents = 'auto';
+    hiddenInput.focus({ preventScroll: true });
+    // iOS sometimes needs a tick
+    setTimeout(() => hiddenInput.focus({ preventScroll: true }), 0);
+  }
+  hiddenInput.addEventListener('input', (e) => {
+    const v = (e.target.value || '').toUpperCase();
+    const m = v.match(/[A-Z]/);
+    if (m && activeReelForInput >= 0) {
+      setLetter(activeReelForInput, m[0]);
+    }
+    closeKeyboard();
+  });
+  hiddenInput.addEventListener('blur', () => {
+    // Remember the active reel briefly so a pointer-down on it can be detected
+    // as a toggle-cancel rather than a re-open.
+    lastActiveBeforeBlur = activeReelForInput;
+    setTimeout(() => { lastActiveBeforeBlur = -1; }, 350);
+    hiddenInput.style.pointerEvents = 'none';
+    clearActiveReels();
+    activeReelForInput = -1;
+  });
+
+  // Fallback: detect keyboard dismiss via visualViewport height change.
+  // On some Android devices, pressing the back button to close the keyboard
+  // does NOT fire a blur event on the input, so we watch for the viewport
+  // expanding back to ~full window height and clear active state then.
+  if (window.visualViewport) {
+    let lastVH = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+      const vh = window.visualViewport.height;
+      const wh = window.innerHeight;
+      // If viewport grew significantly (keyboard closed) and we still think
+      // a reel is active, clean up.
+      const grew = vh - lastVH > 100;
+      const nearlyFull = vh > wh * 0.85;
+      lastVH = vh;
+      if (grew && nearlyFull && activeReelForInput !== -1) {
+        hiddenInput.blur();
+        hiddenInput.style.pointerEvents = 'none';
+        clearActiveReels();
+        activeReelForInput = -1;
+        lastActiveBeforeBlur = -1;
+      }
+    });
+  }
+
+  // Compute the set of letter indices consistent with a single hint about
+  // a single reel, given the guess letter `g` (0–25).
+  function constraintForHint(g, hintType) {
+    const s = new Set();
+    if (hintType === 'correct') {
+      s.add(g);
+    } else if (hintType === 'close-up') {
+      // target is 1–4 earlier
+      for (let k = 1; k <= 4; k++) if (g - k >= 0) s.add(g - k);
+    } else if (hintType === 'close-down') {
+      // target is 1–4 later
+      for (let k = 1; k <= 4; k++) if (g + k <= 25) s.add(g + k);
+    } else if (hintType === 'far-up') {
+      // target is 5+ earlier
+      for (let k = 0; k <= g - 5; k++) s.add(k);
+    } else if (hintType === 'far-down') {
+      // target is 5+ later
+      for (let k = g + 5; k <= 25; k++) s.add(k);
+    }
+    return s;
+  }
+
+  // ---------- GUESS LOGIC ----------
+  function currentGuess() {
+    return positions.map(p => ALPHA[p]).join('');
+  }
+
+  function evalGuess() {
+    const guess = currentGuess();
+    const hints = [];
+    for (let i = 0; i < N; i++) {
+      const g = guess.charCodeAt(i) - 65;
+      const t = target.charCodeAt(i) - 65;
+      const diff = t - g; // positive => target is later in alphabet
+      // Arrow points toward where the target letter is on the reel.
+      // Later in alphabet = lower on reel (you drag up to reveal it),
+      // so target later → arrow DOWN.
+      if (diff === 0)               hints.push({ type: 'correct',    char: '●'    });
+      else if (Math.abs(diff) <= 4) {
+        if (diff > 0)               hints.push({ type: 'close-down', char: 'v'    });
+        else                        hints.push({ type: 'close-up',   char: '^'    });
+      } else {
+        if (diff > 0)               hints.push({ type: 'far-down',   char: 'v\nv' });
+        else                        hints.push({ type: 'far-up',     char: '^\n^' });
+      }
+    }
+    return { guess, hints };
+  }
+
+  function renderHints(hints, guess, onDone) {
+    // Hint cells are between the leading and trailing gutter elements
+    const cells = Array.from(hintRow.children).slice(1, 1 + N);
+    // Clear hint row immediately
+    cells.forEach((el) => {
+      el.className = 'hint empty';
+      el.querySelector('.letter').textContent = '';
+      el.querySelector('.arrow').textContent = '';
+    });
+    // Reveal each reel's hint in sequence, left to right
+    const STEP = 130; // ms between reels (~650ms total for 5 reels)
+    // Track how many correct chimes have played so the pitch rises each time.
+    let correctChimeIndex = 0;
+    hints.forEach((h, i) => {
+      const myCorrectIndex = (h.type === 'correct') ? correctChimeIndex++ : 0;
+      setTimeout(() => {
+        // Populate the hint cell with letter + arrow
+        const el = cells[i];
+        el.className = 'hint ' + h.type;
+        el.querySelector('.letter').textContent = guess[i];
+        el.querySelector('.arrow').textContent = h.char;
+        // Apply constraint for this reel and refresh its track to gray-out eliminated letters
+        const g = guess.charCodeAt(i) - 65;
+        const newSet = constraintForHint(g, h.type);
+        const intersected = new Set();
+        for (const v of possible[i]) if (newSet.has(v)) intersected.add(v);
+        possible[i] = intersected;
+        // Reveal the red "previous guess" highlight on this reel in sync
+        if (prevPositions) prevPositions[i] = g;
+        updateTrack(i);
+        // Flash & sound based on category
+        const win = tracks[i].win;
+        // Strip any prior reveal classes before re-applying
+        win.classList.remove('reveal-correct', 'reveal-close', 'reveal-far');
+        void win.offsetWidth; // restart animation
+        if (h.type === 'correct') {
+          win.classList.add('reveal-correct');
+          clickSound('hint_correct', myCorrectIndex);
+        } else if (h.type === 'close-up' || h.type === 'close-down') {
+          win.classList.add('reveal-close');
+          clickSound('hint_close');
+        } else {
+          win.classList.add('reveal-far');
+          clickSound('hint_far');
+        }
+      }, i * STEP);
+    });
+    if (onDone) setTimeout(onDone, hints.length * STEP + 60);
+  }
+
+  function lockCorrectReels(hints) {
+    hints.forEach((h, i) => {
+      // board.children[0] is the leading gutter; reel columns start at index 1
+      const win = board.children[i + 1].querySelector('.reel-window');
+      if (h.type === 'correct') win.classList.add('locked');
+    });
+  }
+
+  function addHistory(guess, hints) {
+    const row = document.createElement('div');
+    row.className = 'history-row';
+    const num = document.createElement('div');
+    num.className = 'num';
+    num.textContent = triesUsed;
+    row.appendChild(num);
+    for (let i = 0; i < N; i++) {
+      const c = document.createElement('div');
+      c.className = 'history-cell' + (hints[i].type === 'correct' ? ' correct' : '');
+      const L = document.createElement('div');
+      L.className = 'letter'; L.textContent = guess[i];
+      const H = document.createElement('div');
+      H.className = 'h ' + hints[i].type; H.textContent = hints[i].char;
+      c.appendChild(L); c.appendChild(H);
+      row.appendChild(c);
+    }
+    // Trailing gutter cell for symmetric centering
+    const trailing = document.createElement('div');
+    trailing.className = 'num';
+    row.appendChild(trailing);
+    historyEl.appendChild(row);
+  }
+
+  function enterGuess() {
+    if (gameOver) return;
+    ensureAudio();
+    clickSound('enter');
+    triesUsed++;
+    const { guess, hints } = evalGuess();
+    lockCorrectReels(hints);
+    addHistory(guess, hints);
+    triesLeftEl.textContent = MAX_TRIES - triesUsed;
+
+    // Initialize prev highlight as empty; renderHints will set each reel's prev
+    // letter in sync with its reveal so the red highlight appears in sequence.
+    prevPositions = [-1, -1, -1, -1, -1];
+
+    // Disable enter while sequence plays to avoid double-submit
+    const enterBtn = document.getElementById('enterBtn');
+    enterBtn.disabled = true;
+
+    renderHints(hints, guess, () => {
+      if (guess === target) {
+        gameOver = true;
+        clickSound('win');
+        statusEl.className = 'status win';
+        statusEl.innerHTML =
+          `<div class="label">THAT'S IT!</div>
+           <div class="word">${target}</div>
+           <div class="tries-msg">SOLVED IN <b>${triesUsed}</b> ${triesUsed === 1 ? 'TRY' : 'TRIES'}</div>`;
+        enterBtn.disabled = true;
+        roundNum++;
+        localStorage.setItem('locus_round', roundNum);
+      } else if (triesUsed >= MAX_TRIES) {
+        gameOver = true;
+        clickSound('lose');
+        statusEl.className = 'status lose';
+        statusEl.innerHTML =
+          `<div class="label">OUT OF TRIES — THE WORD WAS</div>
+           <div class="word">${target}</div>`;
+        enterBtn.disabled = true;
+      } else {
+        enterBtn.disabled = false;
+      }
+    });
+  }
+
+  function pickWord() { return WORDS[Math.floor(Math.random() * WORDS.length)]; }
+
+  function newGame() {
+    target = pickWord();
+    positions = [0,0,0,0,0];
+    prevPositions = null;
+    // Reset possible-letter sets — all 26 letters available per reel
+    possible = [];
+    enteredPossible = [false, false, false, false, false];
+    for (let i = 0; i < N; i++) {
+      const s = new Set();
+      for (let k = 0; k <= 25; k++) s.add(k);
+      possible.push(s);
+    }
+    triesUsed = 0;
+    gameOver = false;
+    triesLeftEl.textContent = MAX_TRIES;
+    roundNumEl.textContent = roundNum;
+    statusEl.className = 'status';
+    statusEl.innerHTML = '';
+    historyEl.innerHTML = '';
+    document.getElementById('enterBtn').disabled = false;
+    buildReels();
+    // console.log('Target:', target);
+  }
+
+  // ---------- CONTROLS ----------
+  document.getElementById('enterBtn').addEventListener('click', () => { ensureAudio(); enterGuess(); });
+  document.getElementById('newBtn').addEventListener('click', () => {
+    if (!gameOver) {
+      if (!confirm('Start a new game? Current progress will be lost.')) return;
+    }
+    ensureAudio();
+    clickSound('new');
+    newGame();
+  });
+  document.getElementById('helpBtn').addEventListener('click', () => {
+    document.getElementById('modal').classList.add('open');
+  });
+  document.getElementById('closeModal').addEventListener('click', () => {
+    document.getElementById('modal').classList.remove('open');
+  });
+  document.getElementById('modal').addEventListener('click', (e) => {
+    if (e.target.id === 'modal') document.getElementById('modal').classList.remove('open');
+  });
+
+  soundBtn.textContent = soundOn ? '🔊' : '🔇';
+  soundBtn.classList.toggle('on', soundOn);
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    localStorage.setItem('locus_sound', soundOn ? '1' : '0');
+    soundBtn.textContent = soundOn ? '🔊' : '🔇';
+    soundBtn.classList.toggle('on', soundOn);
+    if (soundOn) { ensureAudio(); clickSound('tap'); }
+  });
+
+  // Enter key submits (when not typing into hidden input)
+  window.addEventListener('keydown', (e) => {
+    if (gameOver) return;
+    if (document.activeElement === hiddenInput) return;
+    if (e.key === 'Enter') enterGuess();
+  });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
